@@ -2,6 +2,7 @@
 
 //Error pin to flash on error
 int ERROR_PIN = 13;
+int LIGHT_PIN = 7;
 /**
  * Enumeration of commands
  * Value set to control code of command
@@ -22,8 +23,8 @@ typedef enum
   IDENTIFY = 0x51,
   CAPTURE_FINGER = 0x60,
   ACK = 0x30,
-  NO_ACK = 0x31
-  
+  NAK = 0x31,
+  DELETE_ALL = 0x41
 } Command;
 
 /**
@@ -42,17 +43,26 @@ typedef struct
   long len;
 } CommandPacket;
 
-
+//Builtin functions
 void setup();
 void loop();
-void error(int error);
+//Table of Contents functions
+void start();
+void enroll(Command cmd, uint32_t param);
+//Utility functions
+void flash(uint32_t num,int time);
+//Error leaf function
+void error(uint32_t error);
+//Send packet functions
 CommandPacket* getCommand(Command cmd);
 void setParameter(CommandPacket* packet,uint16_t value);
 void fillChecksum(uint8_t* bytes,long len);
-CommandPacket* sendCommand(CommandPacket* packet);
-void sendBytes(uint8_t* bytes,long len);
+uint32_t sendCommand(CommandPacket* packet);
+//Read packet functions
 CommandPacket* readCommand();
-void readBytes(uint8_t* bytes,long len);
+//Bytes read send
+void sendBytes(uint8_t* bytes,long len);
+void recvBytes(uint8_t* bytes,long len);
 
 /**
  * Setups up the baudrate to be 9600 and
@@ -61,13 +71,94 @@ void readBytes(uint8_t* bytes,long len);
 void setup()
 {
   pinMode(ERROR_PIN, OUTPUT);
+  pinMode(LIGHT_PIN, OUTPUT);
+  digitalWrite(LIGHT_PIN,HIGH);
   Serial.begin(9600);
   //Wait for the serial pins to connect (May only be needed for Leonardo board)
   while (!Serial) {}
-  CommandPacket* init = getCommand(OPEN);
-  CommandPacket* resp = sendCommand(init);
-  free(init);
-  free(resp);
+  //Turn on light
+  CommandPacket* led = getCommand(CMOS_LED);
+  setParameter(led,1);
+  sendCommand(led);
+  delay(1000);
+  setParameter(led,0);
+  sendCommand(led);
+  free(led);
+  //Start: enroll if needed
+  //led = getCommand(DELETE_ALL);
+  //sendCommand(led);
+  //free(led);
+  start();
+}
+/**
+ * Flash the CMOS LED
+ * num - number of times to flash
+ */
+void flash(uint32_t num,int time)
+{
+  CommandPacket* led = getCommand(CMOS_LED);
+  while (num-- > 0) {
+    setParameter(led,1);
+    sendCommand(led);
+    delay(time);
+    setParameter(led,0);
+    sendCommand(led);
+    delay(time);
+  }
+  free(led);
+}
+/**
+ * Start by enrolling, if none enrolled
+ */
+void start() {
+  CommandPacket* cmd = getCommand(OPEN);
+  sendCommand(cmd);
+  free(cmd);
+  //Get number enrolled...if zero, enroll
+  cmd = getCommand(GET_ENROLL_COUNT);
+  uint32_t param = sendCommand(cmd);
+  free(cmd);
+  flash(param,100);
+  if (param == 0)
+  {
+    //Signal enroll
+    flash(3,300);
+    enroll(ENROLL_START,param);
+  }
+}
+/**
+ * Enroll.  Recursively runs the command 4 times.
+ * cmd - command ENROLL_START, ENROLL!, ENROLL2, ENROLL3
+ * param - id to enroll (used only for start)
+ */
+void enroll(Command cmd, uint32_t param)
+{
+  //LED on for capture
+  CommandPacket* led = getCommand(CMOS_LED);
+  setParameter(led,1);
+  sendCommand(led);
+  //For enroll commands wait until finger pressed 
+  CommandPacket* finger = getCommand(IS_PRESS_FINGER);
+  while (cmd >= ENROLL1 && cmd <= ENROLL3 && sendCommand(finger) != 0) {}
+  free(finger);
+  //Enroll commands in order: START, 1,2,3
+  CommandPacket* packet = getCommand(cmd);
+  switch(cmd) {
+    case ENROLL_START:
+      setParameter(packet,param);
+    case ENROLL1:
+    case ENROLL2:
+    case ENROLL3:
+      param = sendCommand(packet);
+      setParameter(led,0);
+      sendCommand(led);
+      delay(1000);
+      enroll((Command)(cmd+1),0);
+    case ENROLL3+1:
+      break;
+  }
+  free(packet);
+  free(led);
 }
 /**
  * Flashes LED
@@ -75,46 +166,35 @@ void setup()
 void loop()
 {
   CommandPacket* led = getCommand(CMOS_LED);
-  CommandPacket* res;
-  while (true)
-  {
-    setParameter(led,1);
-    res = sendCommand(led);
-    //if (res->cmd == ACK)
-    digitalWrite(ERROR_PIN, LOW);
-    //else
-    //  digitalWrite(ERROR_PIN, LOW);
-    free(res);
-    delay(5000);
+  setParameter(led,1);
+  sendCommand(led);
+ 
+  CommandPacket* finger = getCommand(IS_PRESS_FINGER);
+  while (sendCommand(finger) != 0) {}
+  free(finger);
+  CommandPacket* id = getCommand(IDENTIFY);
+  if(sendCommand(id) < 199) {
+    digitalWrite(LIGHT_PIN,!digitalRead(LIGHT_PIN));
     setParameter(led,0);
-    res = sendCommand(led);
-    //if (res->cmd == ACK)
-      digitalWrite(ERROR_PIN, HIGH);
-    //else
-    //  digitalWrite(ERROR_PIN, HIGH);
-    free(res);
-    delay(5000);      
+    sendCommand(led);
+    delay(1000);
   }
+  free(id);
+  free(led);
+
 }
 /**
  * Flash arduino LED on error
  * error - number of times to flash
  */
-void error(int error)
+void error(uint32_t error)
 {
   Serial.end();
   int i = 0;
   while(true)
   {
-    //Flash "error" number of times.
-    for (i = 0; i < error; i++)
-    {
-      digitalWrite(ERROR_PIN, HIGH);
-      delay(200);
-      digitalWrite(ERROR_PIN, LOW);
-      delay(200);
-    }
-    delay(1800);
+    flash(error,500);
+    delay(1500);
   }
 }
 
@@ -165,11 +245,19 @@ void fillChecksum(uint8_t* bytes,long len) {
 /**
  * Send a command packet recieves responce
  * packet - command packet to send
+ * return - parameter from command
  */
-CommandPacket* sendCommand(CommandPacket* packet)
+uint32_t sendCommand(CommandPacket* packet)
 {
   sendBytes((uint8_t*)packet,packet->len);
-  return readCommand();
+  packet = readCommand();
+  //If NAK error, otherwise return param
+  uint32_t param = packet->param;
+  uint16_t cmd = packet->cmd;
+  free(packet);
+  //if (cmd == NAK)
+  //  error(param);
+  return param;
 }
 /**
  * Sends bytes.  All is little endian so no conversion necessary.
@@ -179,7 +267,13 @@ CommandPacket* sendCommand(CommandPacket* packet)
 void sendBytes(uint8_t* bytes,long len) 
 {
   fillChecksum(bytes,len);
-
+  int i = 0;
+  /*Serial.print("< ");
+  for (i = 0; i < len; i++) {
+    Serial.print(bytes[i],HEX);
+    Serial.print(" ");
+  }
+  Serial.println();*/
   if (Serial.write(bytes,len) != len)
     error(10);
 }
@@ -191,23 +285,39 @@ CommandPacket* readCommand()
 {
   //Get empty command so memory is zeroed, and len is set
   CommandPacket* packet = getCommand(NIL);
-  readBytes((uint8_t*)packet,packet->len);
+  recvBytes((uint8_t*)packet,packet->len);
+  return packet;
 }
 /**
  * Reads bytes.  All is little endian so no conversion necessary.
  * bytes - pointer to bytes to read into
  * len - length of bytes
  */
-void readBytes(uint8_t* bytes,long len)
+void recvBytes(uint8_t* bytes,long len)
 {
   //Read bytes waiting if data is not found
   long i = 0;
-  for (i = 0; i < len; i++)
+  long j = 0;
+  for (i = 0; i < len;)
   {
     int b = Serial.read();
     if (b == -1)
-      delay(10);
-    bytes[i] = (uint8_t) b;
+    {
+      /*for (j = 0; j < i+1; j++) {
+        digitalWrite(ERROR_PIN, HIGH);
+        delay(100);
+        digitalWrite(ERROR_PIN, LOW);
+        delay(100);  
+      }
+      delay(1000);*/
+      continue;
+    }
+    bytes[i++] = (uint8_t) b;
   }
+  /*Serial.print("< ");
+  for (i = 0; i < len; i++) {
+    Serial.print(bytes[i],HEX);
+    Serial.print(" ");
+  }
+  Serial.println();*/
 }
-
