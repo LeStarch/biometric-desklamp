@@ -2,7 +2,7 @@
 
 //Error pin to flash on error
 int ERROR_PIN = 13;
-int LIGHT_PIN = 7;
+int PWM_PIN = 3;
 /**
  * Enumeration of commands
  * Value set to control code of command
@@ -26,7 +26,6 @@ typedef enum
   NAK = 0x31,
   DELETE_ALL = 0x41
 } Command;
-
 /**
  * Command structure
  */
@@ -50,6 +49,7 @@ void loop();
 void start();
 void enroll(Command cmd, uint32_t param);
 //Utility functions
+void toggle();
 void flash(uint32_t num,int time);
 //Error leaf function
 void error(uint32_t error);
@@ -71,8 +71,7 @@ void recvBytes(uint8_t* bytes,long len);
 void setup()
 {
   pinMode(ERROR_PIN, OUTPUT);
-  pinMode(LIGHT_PIN, OUTPUT);
-  digitalWrite(LIGHT_PIN,HIGH);
+  pinMode(PWM_PIN, OUTPUT);
   Serial.begin(9600);
   //Wait for the serial pins to connect (May only be needed for Leonardo board)
   while (!Serial) {}
@@ -80,7 +79,7 @@ void setup()
   CommandPacket* led = getCommand(CMOS_LED);
   setParameter(led,1);
   sendCommand(led);
-  delay(1000);
+  delay(500);
   setParameter(led,0);
   sendCommand(led);
   free(led);
@@ -116,14 +115,19 @@ void start() {
   free(cmd);
   //Get number enrolled...if zero, enroll
   cmd = getCommand(GET_ENROLL_COUNT);
-  uint32_t param = sendCommand(cmd);
+  uint32_t cnt = sendCommand(cmd);
   free(cmd);
-  flash(param,100);
-  if (param == 0)
+  //Is there a finger
+  cmd = getCommand(IS_PRESS_FINGER);
+  uint32_t fin = sendCommand(cmd);
+  free(cmd);
+  //If no figers, or a finger is actively on scanner
+  //Learn a new one
+  if (cnt == 0 || fin  == 0)
   {
     //Signal enroll
     flash(3,300);
-    enroll(ENROLL_START,param);
+    enroll(ENROLL_START,cnt);
   }
 }
 /**
@@ -152,7 +156,7 @@ void enroll(Command cmd, uint32_t param)
       param = sendCommand(packet);
       setParameter(led,0);
       sendCommand(led);
-      delay(1000);
+      delay(500);
       enroll((Command)(cmd+1),0);
     case ENROLL3+1:
       break;
@@ -161,23 +165,31 @@ void enroll(Command cmd, uint32_t param)
   free(led);
 }
 /**
- * Flashes LED
+ * Toggle the light.
+ */
+void toggle() {
+  static uint8_t out = 0;
+  out = (out == 0) ? 99 : out - 33; 
+  analogWrite(PWM_PIN,(((uint16_t)out)*256)/100);
+}
+
+/**
+ * Loops waiting for finger print.
  */
 void loop()
 {
   CommandPacket* led = getCommand(CMOS_LED);
   setParameter(led,1);
   sendCommand(led);
- 
   CommandPacket* finger = getCommand(IS_PRESS_FINGER);
   while (sendCommand(finger) != 0) {}
   free(finger);
   CommandPacket* id = getCommand(IDENTIFY);
   if(sendCommand(id) < 199) {
-    digitalWrite(LIGHT_PIN,!digitalRead(LIGHT_PIN));
+    toggle();
     setParameter(led,0);
     sendCommand(led);
-    delay(1000);
+    delay(500);
   }
   free(id);
   free(led);
@@ -255,8 +267,6 @@ uint32_t sendCommand(CommandPacket* packet)
   uint32_t param = packet->param;
   uint16_t cmd = packet->cmd;
   free(packet);
-  //if (cmd == NAK)
-  //  error(param);
   return param;
 }
 /**
@@ -268,12 +278,6 @@ void sendBytes(uint8_t* bytes,long len)
 {
   fillChecksum(bytes,len);
   int i = 0;
-  /*Serial.print("< ");
-  for (i = 0; i < len; i++) {
-    Serial.print(bytes[i],HEX);
-    Serial.print(" ");
-  }
-  Serial.println();*/
   if (Serial.write(bytes,len) != len)
     error(10);
 }
