@@ -1,8 +1,14 @@
 #include <stdint.h>
+#include <Arduino.h>
 
 //Error pin to flash on error
 int ERROR_PIN = 13;
-int PWM_PIN = 3;
+int PWM_PIN = 5;
+int FAN_PIN = 6;
+//Maximum percentage
+int MAX_PWM = 99;
+//One unit of delay (in ms)
+int DELAY = 250;
 /**
  * Enumeration of commands
  * Value set to control code of command
@@ -72,22 +78,33 @@ void setup()
 {
   pinMode(ERROR_PIN, OUTPUT);
   pinMode(PWM_PIN, OUTPUT);
+  pinMode(FAN_PIN, OUTPUT);
   Serial.begin(9600);
   //Wait for the serial pins to connect (May only be needed for Leonardo board)
   while (!Serial) {}
-  //Turn on light
+  CommandPacket* cmd = getCommand(OPEN);
+  sendCommand(cmd);
+  free(cmd);
+  //Turn off light
   CommandPacket* led = getCommand(CMOS_LED);
+  setParameter(led,0);
+  sendCommand(led);
+  delay(DELAY+DELAY);
+  //Flash 3 times
+  flash(9,50);
   setParameter(led,1);
   sendCommand(led);
-  delay(500);
-  setParameter(led,0);
+  delay(DELAY+DELAY);
+  //Enroll should happend here
+  start();
+  flash(9,50);
+  setParameter(led,1);
   sendCommand(led);
   free(led);
   //Start: enroll if needed
   //led = getCommand(DELETE_ALL);
   //sendCommand(led);
   //free(led);
-  start();
 }
 /**
  * Flash the CMOS LED
@@ -106,15 +123,13 @@ void flash(uint32_t num,int time)
   }
   free(led);
 }
+
 /**
  * Start by enrolling, if none enrolled
  */
 void start() {
-  CommandPacket* cmd = getCommand(OPEN);
-  sendCommand(cmd);
-  free(cmd);
   //Get number enrolled...if zero, enroll
-  cmd = getCommand(GET_ENROLL_COUNT);
+  CommandPacket* cmd = getCommand(GET_ENROLL_COUNT);
   uint32_t cnt = sendCommand(cmd);
   free(cmd);
   //Is there a finger
@@ -126,7 +141,6 @@ void start() {
   if (cnt == 0 || fin  == 0)
   {
     //Signal enroll
-    flash(3,300);
     enroll(ENROLL_START,cnt);
   }
 }
@@ -137,6 +151,7 @@ void start() {
  */
 void enroll(Command cmd, uint32_t param)
 {
+  flash(2,100);
   //LED on for capture
   CommandPacket* led = getCommand(CMOS_LED);
   setParameter(led,1);
@@ -156,7 +171,7 @@ void enroll(Command cmd, uint32_t param)
       param = sendCommand(packet);
       setParameter(led,0);
       sendCommand(led);
-      delay(500);
+      delay(DELAY);
       enroll((Command)(cmd+1),0);
     case ENROLL3+1:
       break;
@@ -169,8 +184,10 @@ void enroll(Command cmd, uint32_t param)
  */
 void toggle() {
   static uint8_t out = 0;
-  out = (out == 0) ? 99 : out - 33; 
+  out = (out <= 0) ? MAX_PWM : out - 33;
+  int fan = (out <= 0) ? 0 : min(out+25,100);
   analogWrite(PWM_PIN,(((uint16_t)out)*256)/100);
+  analogWrite(FAN_PIN,(((uint16_t)out)*256)/100);
 }
 
 /**
@@ -189,7 +206,7 @@ void loop()
     toggle();
     setParameter(led,0);
     sendCommand(led);
-    delay(500);
+    delay(DELAY);
   }
   free(id);
   free(led);
@@ -197,17 +214,20 @@ void loop()
 }
 /**
  * Flash arduino LED on error
- * error - number of times to flash
+ * cnt - number of times to flash
  */
-void error(uint32_t error)
+void error(uint32_t cnt)
 {
-  Serial.end();
-  int i = 0;
-  while(true)
-  {
-    flash(error,500);
-    delay(1500);
+  /*int i = 0;
+  for (i = 0; i < cnt; i++) {
+    flash(3,50);
+    delay(DELAY);
   }
+  CommandPacket* cmd = getCommand(CLOSE);
+  sendCommand(cmd);
+  free(cmd);
+  Serial.end();
+  setup();*/
 }
 
 /**
