@@ -3,12 +3,15 @@
 
 //Error pin to flash on error
 int ERROR_PIN = 13;
-int PWM_PIN = 5;
-int FAN_PIN = 6;
+int PWM_PIN = 23;
+int FAN_PIN = 22;
 //Maximum percentage
-int MAX_PWM = 99;
+int MAX_PWM = 66;
 //One unit of delay (in ms)
 int DELAY = 250;
+
+#define HWSerial Serial1
+
 /**
  * Enumeration of commands
  * Value set to control code of command
@@ -80,8 +83,9 @@ void setup()
   pinMode(PWM_PIN, OUTPUT);
   pinMode(FAN_PIN, OUTPUT);
   Serial.begin(9600);
+  HWSerial.begin(9600);
   //Wait for the serial pins to connect (May only be needed for Leonardo board)
-  while (!Serial) {}
+  while (!HWSerial) {}
   CommandPacket* cmd = getCommand(OPEN);
   sendCommand(cmd);
   free(cmd);
@@ -184,10 +188,11 @@ void enroll(Command cmd, uint32_t param)
  */
 void toggle() {
   static uint8_t out = 0;
-  out = (out <= 0) ? MAX_PWM : out - 33;
+  out = (out <= 0) ? MAX_PWM : out - MAX_PWM/3;
   int fan = (out <= 0) ? 0 : min(out+25,100);
   analogWrite(PWM_PIN,(((uint16_t)out)*256)/100);
-  analogWrite(FAN_PIN,(((uint16_t)out)*256)/100);
+  analogWrite(FAN_PIN,(((uint16_t)fan)*256)/100);
+  Serial.println((((uint16_t)out)*256)/100);
 }
 
 /**
@@ -226,7 +231,7 @@ void error(uint32_t cnt)
   CommandPacket* cmd = getCommand(CLOSE);
   sendCommand(cmd);
   free(cmd);
-  Serial.end();
+  HWSerial.end();
   setup();*/
 }
 
@@ -285,7 +290,7 @@ uint32_t sendCommand(CommandPacket* packet)
   packet = readCommand();
   //If NAK error, otherwise return param
   uint32_t param = packet->param;
-  uint16_t cmd = packet->cmd;
+  //uint16_t cmd = packet->cmd;
   free(packet);
   return param;
 }
@@ -297,8 +302,8 @@ uint32_t sendCommand(CommandPacket* packet)
 void sendBytes(uint8_t* bytes,long len) 
 {
   fillChecksum(bytes,len);
-  int i = 0;
-  if (Serial.write(bytes,len) != len)
+  //int i = 0;
+  if (HWSerial.write(bytes,len) != ((unsigned int)len))
     error(10);
 }
 /**
@@ -321,10 +326,10 @@ void recvBytes(uint8_t* bytes,long len)
 {
   //Read bytes waiting if data is not found
   long i = 0;
-  long j = 0;
+  //long j = 0;
   for (i = 0; i < len;)
   {
-    int b = Serial.read();
+    int b = HWSerial.read();
     if (b == -1)
     {
       /*for (j = 0; j < i+1; j++) {
@@ -338,10 +343,10 @@ void recvBytes(uint8_t* bytes,long len)
     }
     bytes[i++] = (uint8_t) b;
   }
-  /*Serial.print("< ");
+  /*HWSerial.print("< ");
   for (i = 0; i < len; i++) {
-    Serial.print(bytes[i],HEX);
-    Serial.print(" ");
+    HWSerial.print(bytes[i],HEX);
+    HWSerial.print(" ");
   }
-  Serial.println();*/
+  HWSerial.println();*/
 }
