@@ -5,7 +5,7 @@ Files include Arduino code, KiCad files, etc.
 
 ## Functional Diagram
 
-![Lamp Functional Design](https://docs.google.com/drawings/d/1FzfYlJimZiMFY7TzZ2o8irCIButJ6qyPn2TqXGDPiBw/pub?w=1375&h=750,Functional design diagram)
+![Lamp Functional Design](https://docs.google.com/drawings/d/1FzfYlJimZiMFY7TzZ2o8irCIButJ6qyPn2TqXGDPiBw/pub?w=1375&h=750,"Functional design diagram")
 
 ## 5V1A Power Supply
 Used to power the Arduino and the cooling fan, this power supply is slightly under powered due to the narrow trace width between the components. Thus it is capible of supplying ~600mA. This is appears to be sufficient for the Teensy 3.2, finger-print scanner, and LED cooling fan.
