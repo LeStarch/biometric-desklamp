@@ -3,14 +3,14 @@
 
 //Error pin to flash on error
 int ERROR_PIN = 13;
-int PWM_PIN = 23;
-int FAN_PIN = 22;
+int PWM_PIN = 3;
+int FAN_PIN = 4;
 //Maximum percentage
-int MAX_PWM = 66;
+int MAX_PWM = 99;
 //One unit of delay (in ms)
 int DELAY = 250;
 
-#define HWSerial Serial1
+#define HWSerial Serial2
 
 /**
  * Enumeration of commands
@@ -162,8 +162,15 @@ void enroll(Command cmd, uint32_t param)
   sendCommand(led);
   //For enroll commands wait until finger pressed 
   CommandPacket* finger = getCommand(IS_PRESS_FINGER);
+  while (cmd >= ENROLL1 && cmd <= ENROLL3 && sendCommand(finger) == 0) {}
   while (cmd >= ENROLL1 && cmd <= ENROLL3 && sendCommand(finger) != 0) {}
   free(finger);
+  if (cmd >= ENROLL1 && cmd <= ENROLL3) {
+    CommandPacket* cap = getCommand(CAPTURE_FINGER);
+    setParameter(cap,1);
+    sendCommand(cap);
+    free(cap);
+  }
   //Enroll commands in order: START, 1,2,3
   CommandPacket* packet = getCommand(cmd);
   switch(cmd) {
@@ -192,7 +199,7 @@ void toggle() {
   int fan = (out <= 0) ? 0 : min(out+25,100);
   analogWrite(PWM_PIN,(((uint16_t)out)*256)/100);
   analogWrite(FAN_PIN,(((uint16_t)fan)*256)/100);
-  Serial.println((((uint16_t)out)*256)/100);
+  //Serial.println((((uint16_t)out)*256)/100);
 }
 
 /**
@@ -206,6 +213,10 @@ void loop()
   CommandPacket* finger = getCommand(IS_PRESS_FINGER);
   while (sendCommand(finger) != 0) {}
   free(finger);
+  CommandPacket* cap = getCommand(CAPTURE_FINGER);
+  setParameter(cap,0);
+  sendCommand(cap);
+  free(cap);
   CommandPacket* id = getCommand(IDENTIFY);
   if(sendCommand(id) < 199) {
     toggle();
