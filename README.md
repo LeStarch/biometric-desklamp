@@ -25,4 +25,4 @@ Awaiting assembly.
 P-type MOSFET has a reversed layout and thus should be corrected in version 2.
 
 ## Nano Code (and now Teensy as well)
-Code written for the Arduino Nano, which interfaces with the fingerprint reader and controls PWM signals used to drive the cooling fan and LED driver enable line.
+Code written using the Arduino libraries, which interfaces with the fingerprint reader and controls PWM signals used to drive the cooling fan and LED driver enable line.
