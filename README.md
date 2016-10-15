@@ -16,7 +16,11 @@ Used to power the Arduino and the cooling fan, this power supply is slightly und
 ## LED Driver
 LEDs must be driven at a constant current (not voltage) in order to maximize their life expectancy. This driver produces a 1A constant ~30V supply for a high-powered LED module.  It is based on the Texas Instruments LM-3409 chip.  See: https://github.com/LeStarch/lm3409-calc for how the components were calculated.
 
-**Needed Improvments:** Trace widths may be too small to reliably cary 1A for LED driving. In practice, the lamp is stable, but trace widths should be increased in "an abundance of caution".
+**Needed Improvments:** 
+
+Awaiting assembly.
+
+**Issues Corrected in v2:** Trace widths may be too small to reliably cary 1A for LED driving. In practice, the lamp is stable, but trace widths should be increased in "an abundance of caution".
 
 P-type MOSFET has a reversed layout and thus should be corrected in version 2.
 
