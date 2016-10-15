@@ -29,12 +29,12 @@ void Led::toggle()
 	uint16_t rfan = 0;
 	this->rate = (this->rate <= 0)?MAX_RATE:this->rate - MAX_RATE/TOGGLE_STEPS;
     rled = (this->rate * 256)/100;
-    rfan = (min(this->rate+25,100u)*256)/100;
+    rfan = (min((this->rate*125)/100,100u)*256)/100;
     #ifdef DEBUG
         Serial.print("---- Toggle to: ");
         Serial.print(rled);
         Serial.println(" ----");
     #endif
-   analogWrite(led,rled);
-   analogWrite(led,rfan);
+   analogWrite(this->led,rled);
+   analogWrite(this->fan,rfan);
 }
